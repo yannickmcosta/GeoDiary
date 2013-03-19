@@ -1,0 +1,218 @@
+package com.yannick.geodiary;
+
+import android.app.ListActivity;
+import android.content.ContentUris;
+import android.content.Intent;
+import android.database.Cursor;
+import android.net.Uri;
+import android.os.Bundle;
+import android.util.Log;
+import android.view.ContextMenu;
+import android.view.ContextMenu.ContextMenuInfo;
+import android.view.Menu;
+import android.view.MenuInflater;
+import android.view.MenuItem;
+import android.view.View;
+import android.widget.AdapterView;
+import android.widget.ListView;
+import android.widget.SimpleCursorAdapter;
+import android.widget.Toast;
+
+import com.yannick.geodiary.data.DiaryEntry;
+
+
+public class GeoDiaryListActivity extends ListActivity {
+
+	private static final String TAG = "GeoDiaryListActivity";
+	
+	/** Called when the activity is first created. */
+	@Override
+	public void onCreate(Bundle savedInstanceState) {
+		super.onCreate(savedInstanceState);
+
+		// TODO 1 get the Intent associated with this Activity
+        Intent intent =getIntent();
+
+        // If there is no data associated with the Intent, sets the data to the default URI, which
+        // accesses a list of expenses.
+        // TODO 2 If no Data was passed in the launching Intent, then default it
+        // by calling setData with the value Expense.ExpenseItem.CONTENT_URI
+        if (intent.getData() == null) {
+            intent.setData(DiaryEntry.DiaryItem.CONTENT_URI);
+        }   		
+        
+        // Call the queryExpenses method on the DO you just created.
+        // The first parameter is an array representing the columns you wish to be returned
+        // Use Expense.ExpenseItem.LIST_PROJECTION for this
+        // We want to return all the expenses so selection and selectionArgs can both be null
+        	
+        // TODO 3 Comment out this query from the last exercise which used the DAO directly
+        //Cursor cursor = mDao.queryExpenses(Expense.ExpenseItem.LIST_PROJECTION, null, null, null);
+        
+        // TODO 4 Create a new cursor by calling managedQuery.
+        // The first parameter is the URI for the ContentProvider which is accessed via intent.getData()
+        // The remaining parameters are the same as the ones passed into queryExpenses (which you just commented out)
+        // with the addition of a sort order parameter (ascending / descending)
+
+        Cursor cursor = managedQuery(
+            	intent.getData(), 				// Use the URI stored in the Intent for this Activity
+                DiaryEntry.DiaryItem.LIST_PROJECTION,    // Return the expense description and amount
+                null,                             		// No where clause, return all records.
+                null,                             		// No where clause, therefore no where column values.
+                DiaryEntry.DiaryItem.DEFAULT_SORT_ORDER  // Use the default sort order.
+            );        
+        
+        
+		// The names of the cursor columns to display in the view, initialized
+		// to the description column
+        // Note the creation of these two arrays specifying the columns to be displayed        
+        // and the resource ID's to use to display them
+        // android.R.id.text1 is a built in resource to show simple text
+        // TODO Note that this is the same as when we used the DAO 
+        String[] dataColumns = { DiaryEntry.DiaryItem.COLUMN_NAME_DESCRIPTION } ;
+        int[] viewIDs = { android.R.id.text1 };
+
+        
+        // Create a new SimpleCursorAdapter
+        // Creates the backing adapter for the ListView.
+        // TODO 6 Note that this is the same as when we used the DAO
+        SimpleCursorAdapter adapter
+            = new SimpleCursorAdapter(
+                      this,                             // The Context for the ListView
+                      R.layout.diary_list_item,         // Points to the XML for a list item
+                      cursor,                           // The cursor to get items from
+                      dataColumns,						// The array of Strings holding the names of the data columns to display	
+                      viewIDs							// The array of resource ids used to display the data 
+              );
+        // set the new adapter as the list adapter
+        setListAdapter(adapter);
+        
+        // Register for a context menu
+        registerForContextMenu(getListView());
+	}
+
+	@Override
+	public boolean onCreateOptionsMenu(Menu menu) {
+		MenuInflater inflater = getMenuInflater();
+		inflater.inflate(R.menu.option_menu, menu);
+		return true;
+	}
+
+	@Override
+	public boolean onOptionsItemSelected(MenuItem item) {
+		// Handle item selection
+		switch (item.getItemId()) {
+		case R.id.menu_sync:
+			startSync();
+			return true;
+		case R.id.menu_add:
+			addDiaryItem();
+			return true;
+		default:
+			return super.onOptionsItemSelected(item);
+		}
+	}
+
+    @Override
+    public void onCreateContextMenu(ContextMenu menu, View v,
+                                    ContextMenuInfo menuInfo) {
+      super.onCreateContextMenu(menu, v, menuInfo);
+      MenuInflater inflater = getMenuInflater();
+      inflater.inflate(R.menu.context_menu, menu);
+    }
+    
+    
+    @Override
+    public boolean onContextItemSelected(MenuItem item) {
+    	
+        // The data from the menu item.
+        AdapterView.AdapterContextMenuInfo info;
+
+        /*
+         * Gets the extra info from the menu item. When an expense in the Expense list is long-pressed, a
+         * context menu appears. The menu items for the menu automatically get the data
+         * associated with the note that was long-pressed. The data comes from the provider that
+         * backs the list.
+         *
+         */
+        try {
+            // Casts the data object in the item into the type for AdapterView objects.
+            info = (AdapterView.AdapterContextMenuInfo) item.getMenuInfo();
+        } catch (ClassCastException e) {
+
+            // If the object can't be cast, logs an error
+            Log.e(TAG, "bad menuInfo", e);
+
+            // Triggers default processing of the menu item.
+            return false;
+        }
+        // Appends the selected note's ID to the URI sent with the incoming Intent.
+        // TODO Bonus ?
+        Uri expenseUri = ContentUris.withAppendedId(getIntent().getData(), info.id);  	
+        Log.i(TAG, "ID to delete=" + info.id);
+	      switch (item.getItemId()) {
+	      case R.id.delete:        
+	    	  deleteDiaryItem(expenseUri); 
+	        return true;
+	      default:
+	        return super.onContextItemSelected(item);
+	      }
+    }	
+	
+
+	/**
+	 * Handle a list item click
+	 * @param l The List View where the click happened	
+	 * @param v the View item that was clicked
+	 * @param position the position of the clicked item in the list
+	 * @param the row id (_id value) of the item that was clicked
+	 */	
+	@Override
+	public void onListItemClick(ListView l, View v, int position, long id) {
+		
+	  	  Intent launchingIntent = new Intent(this, GeoDiaryEntryActivity.class);
+	  	  // When launching the ExpenseEntryActivity, we must supply the URI of the data within the ContentProvider
+	  	  // Do this by adding it as the Data of the Intent
+	  	  // As a list item has been clicked, we know the id of the item that was clicked
+	  	  // Simply append that to the main CP URI
+	  	  
+	  	  
+	  	  // TODO 11 Create a Content Provider URI for the item to edit 
+	  	  // HINT: you need to append the id of the item to edit which has been passed in
+	  	  // as the id paramter into this method to the content provider URI
+  	  
+	  	  //Uri itemUri = ContentUris.withAppendedId(getIntent().______(), __);
+	  	  
+	  	  // TODO 12 Set the data of the launchingIntent to be the Uri of the expense item
+	  	  // that is to be edited 	  	  
+	  	  //launchingIntent.setData(______);
+	  	  
+	  	  // TODO 13 Remove the comment
+	  	  //startActivity(launchingIntent);
+		
+	}
+
+
+	private void deleteDiaryItem(Uri expenseUri) {
+ 
+		getContentResolver().delete(expenseUri, null, null);	
+	}	
+
+	private void addDiaryItem() {
+
+		Intent intent = new Intent(this, GeoDiaryEntryActivity.class);
+		startActivity(intent);
+
+	}
+
+	private void startSync() {
+		Toast toast = Toast.makeText(this, "Syncronating...", Toast.LENGTH_LONG);
+		toast.show();
+
+		Intent startSyncService = new Intent(this, SyncService.class);
+		startService(startSyncService);
+
+	}
+
+
+}
